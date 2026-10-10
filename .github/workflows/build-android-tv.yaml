@@ -67,6 +67,20 @@ jobs:
         run: cp build/app/outputs/flutter-apk/app-release.apk Kazumi_android_tv_${{ steps.version.outputs.version }}.apk
         shell: bash
 
+      - name: Inspect manifest merger report
+        if: always()
+        run: |
+          REPORT=$(find build -name 'manifest-merger-release-report.txt' | head -1 || true)
+          if [ -n "$REPORT" ]; then
+            echo "=== $REPORT ==="
+            grep -nE "minSdk|uses-sdk|MERGED" "$REPORT" | head -60 || true
+          else
+            echo "merger report not found"
+          fi
+          MERGED=$(find build -path '*merged_manifests*release*AndroidManifest.xml' -o -path '*packaged_manifests*release*AndroidManifest.xml' | head -1 || true)
+          echo "merged manifest: $MERGED"
+        shell: bash
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:

@@ -54,6 +54,14 @@ android {
         versionName flutterVersionName
     }
 
+    signingConfigs {
+        debug {
+            // 兼容 Android 6：必须启用 v1 (JAR) 签名，v2+ 在 API 24 起才支持
+            v1SigningEnabled true
+            v2SigningEnabled true
+        }
+    }
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.
