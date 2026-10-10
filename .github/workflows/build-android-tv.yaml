@@ -1,9 +1,13 @@
 name: "build-android-tv"
 
-# Android TV 专用安装包构建（云端 GitHub Actions 执行）
-# 产物为包含 armeabi-v7a / arm64-v8a / x86_64 的通用 APK，
-# 兼容 Android 6.0 (API 23) 及以上，发布到独立的 android-tv-v* Release，
-# 不影响仓库已有的手机端 Release 与安装包。
+# Android TV 安装包构建（云端 GitHub Actions 执行）
+# 产出与 guoapp 一致的 4 个包：
+#   - 3 个按 ABI 分包：armeabi-v7a / arm64-v8a / x86_64
+#   - 1 个仅含 arm + arm64 的 universal 通用包
+# 老电视/盒子优先尝试 universal；若通用包仍白屏或无法安装，
+# 改用 armeabi-v7a 纯 32 位分包（规避部分 64 位图形驱动缺陷）。
+# 发布到独立的 android-tv-universal-v* Release，
+# 不影响仓库已有的手机端 Release、安装包及旧版电视包。
 on:
   workflow_dispatch:
 
@@ -12,7 +16,7 @@ permissions:
 
 jobs:
   build-android-tv:
-    name: "Build Android TV APK"
+    name: "Build Android TV APKs"
     runs-on: "ubuntu-latest"
     timeout-minutes: 60
     steps:
@@ -49,7 +53,32 @@ jobs:
         run: echo "version=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)" >> "$GITHUB_OUTPUT"
         shell: bash
 
-      - name: Build Android TV APK
+      - name: Build per-ABI TV APKs
+        env:
+          DANDANAPI_APPID: ${{ secrets.DANDANAPI_APPID }}
+          DANDANAPI_KEY: ${{ secrets.DANDANAPI_KEY }}
+          KAZUMI_APPID: ${{ secrets.KAZUMI_APPID }}
+          KAZUMI_KEY: ${{ secrets.KAZUMI_KEY }}
+        run: >-
+          flutter build apk --release --split-per-abi
+          --dart-define=DANDANAPI_APPID="$DANDANAPI_APPID"
+          --dart-define=DANDANAPI_KEY="$DANDANAPI_KEY"
+          --dart-define=KAZUMI_APPID="$KAZUMI_APPID"
+          --dart-define=KAZUMI_KEY="$KAZUMI_KEY"
+        shell: bash
+
+      - name: Collect per-ABI packages
+        run: |
+          mkdir -p dist
+          V=${{ steps.version.outputs.version }}
+          OUT=build/app/outputs/flutter-apk
+          cp "$OUT/app-armeabi-v7a-release.apk" "dist/Kazumi_android_tv_${V}_armeabi-v7a.apk"
+          cp "$OUT/app-arm64-v8a-release.apk"  "dist/Kazumi_android_tv_${V}_arm64-v8a.apk"
+          cp "$OUT/app-x86_64-release.apk"      "dist/Kazumi_android_tv_${V}_x86_64.apk"
+          ls -lh dist
+        shell: bash
+
+      - name: Build universal TV APK (arm + arm64)
         env:
           DANDANAPI_APPID: ${{ secrets.DANDANAPI_APPID }}
           DANDANAPI_KEY: ${{ secrets.DANDANAPI_KEY }}
@@ -57,49 +86,48 @@ jobs:
           KAZUMI_KEY: ${{ secrets.KAZUMI_KEY }}
         run: >-
           flutter build apk --release
+          --target-platform android-arm,android-arm64
           --dart-define=DANDANAPI_APPID="$DANDANAPI_APPID"
           --dart-define=DANDANAPI_KEY="$DANDANAPI_KEY"
           --dart-define=KAZUMI_APPID="$KAZUMI_APPID"
           --dart-define=KAZUMI_KEY="$KAZUMI_KEY"
         shell: bash
 
-      - name: Rename APK
-        run: cp build/app/outputs/flutter-apk/app-release.apk Kazumi_android_tv_${{ steps.version.outputs.version }}.apk
-        shell: bash
-
-      - name: Inspect manifest merger report
-        if: always()
+      - name: Collect universal package
         run: |
-          REPORT=$(find build -name 'manifest-merger-release-report.txt' | head -1 || true)
-          if [ -n "$REPORT" ]; then
-            echo "=== $REPORT ==="
-            grep -nE "minSdk|uses-sdk|MERGED" "$REPORT" | head -60 || true
-          else
-            echo "merger report not found"
-          fi
-          MERGED=$(find build -path '*merged_manifests*release*AndroidManifest.xml' -o -path '*packaged_manifests*release*AndroidManifest.xml' | head -1 || true)
-          echo "merged manifest: $MERGED"
+          V=${{ steps.version.outputs.version }}
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/Kazumi_android_tv_${V}_universal.apk"
+          echo "=== final dist ==="
+          ls -lh dist
         shell: bash
 
-      - name: Upload build artifact
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Kazumi_android_tv_${{ steps.version.outputs.version }}
-          path: Kazumi_android_tv_*.apk
+          name: Kazumi_android_tv_${{ steps.version.outputs.version }}_packages
+          path: dist/*.apk
           retention-days: 30
 
-      - name: Publish Android TV release
+      - name: Publish Android TV universal release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: android-tv-v${{ steps.version.outputs.version }}
-          name: "Kazumi Android TV 版 v${{ steps.version.outputs.version }}"
+          tag_name: android-tv-universal-v${{ steps.version.outputs.version }}
+          name: "Kazumi Android TV 通用/分包版 v${{ steps.version.outputs.version }}"
           prerelease: false
           # 不抢占手机端正式 Release 的 latest 标记
           make_latest: false
           body: |
-            ## Kazumi Android TV 专用安装包
+            ## Kazumi Android TV 安装包（通用包 + 按架构分包）
 
-            仅适用于 Android TV / 电视盒子，与手机端安装包相互独立。
+            适用于 Android TV / 电视盒子，与手机端安装包及旧版电视包相互独立，原有安装包未做改动。
+
+            ### 下载选择（按顺序尝试）
+            1. **不确定电视架构时，首选 `Kazumi_android_tv_${{ steps.version.outputs.version }}_universal.apk`**（通用包，含 arm + arm64）
+            2. 若通用包仍**白屏 / 闪退 / 无法安装**，老的 32 位电视请改用
+               `Kazumi_android_tv_${{ steps.version.outputs.version }}_armeabi-v7a.apk`
+               （纯 32 位包，可规避部分 64 位图形驱动缺陷导致的白屏）
+            3. 较新的 64 位电视可用 `Kazumi_android_tv_${{ steps.version.outputs.version }}_arm64-v8a.apk`
+            4. x86 模拟器使用 `Kazumi_android_tv_${{ steps.version.outputs.version }}_x86_64.apk`
 
             ### 适配内容
             - 支持 Android TV 桌面（Leanback Launcher）显示与启动
@@ -107,11 +135,11 @@ jobs:
             - 播放页：左右快退/快进、上下音量、确认键播放/暂停并唤起控制条
             - 电视端自动锁定横屏，使用 16:9 侧边导航布局
             - minSdk 23，兼容 Android 6.0 及以上系统
-            - 通用 APK（armeabi-v7a / arm64-v8a / x86_64），新旧电视盒子均可安装
 
             ### 安装方法
-            1. 下载 `Kazumi_android_tv_${{ steps.version.outputs.version }}.apk` 到 U 盘或通过电视文件管理应用传输
+            1. 将 APK 拷到 U 盘或通过电视文件管理应用传输
             2. 在电视/盒子上允许「安装未知来源应用」后安装
+            3. 覆盖安装失败时，请先卸载旧版再装
 
-            > 说明：该安装包为 GitHub Actions 云端构建的 release 包（debug 签名），仅供侧载安装；手机端请使用原有正式 Release 中的安装包。
-          files: Kazumi_android_tv_*.apk
+            > 说明：安装包为 GitHub Actions 云端构建的 release 包（debug 签名），仅供侧载安装；手机端请使用原有正式 Release 中的安装包。
+          files: dist/*.apk
