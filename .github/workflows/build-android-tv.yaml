@@ -48,6 +48,27 @@ jobs:
         run: sed -i -e 's/-Wl,/-Wl,--build-id=none,/' ${{ steps.flutter-action.outputs.PUB-CACHE-PATH }}/hosted/pub.dev/jni-*/src/CMakeLists.txt
         shell: bash
 
+      # 固定签名密钥：首次构建生成 debug.keystore 并通过缓存持久化，
+      # 后续所有构建复用同一密钥，APK 可直接覆盖升级，避免“应用未安装”。
+      - name: Restore stable debug keystore
+        uses: actions/cache@v4
+        id: keycache
+        with:
+          path: ~/.android/debug.keystore
+          key: android-tv-debug-keystore-v1
+
+      - name: Generate stable debug keystore
+        if: steps.keycache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/.android
+          keytool -genkeypair -v \
+            -keystore ~/.android/debug.keystore \
+            -storepass android -keypass android \
+            -alias androiddebugkey \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Kazumi TV Debug,O=Android,C=US"
+        shell: bash
+
       - name: Extract app version
         id: version
         run: echo "version=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)" >> "$GITHUB_OUTPUT"
@@ -151,7 +172,7 @@ jobs:
             ### 安装方法
             1. 将 APK 拷到 U 盘或通过电视文件管理应用传输
             2. 在电视/盒子上允许「安装未知来源应用」后安装
-            3. 覆盖安装失败时，请先卸载旧版再装
+            3. **本版起使用跨版本固定签名密钥**；由更早的临时签名包升级时，请先卸载旧版再安装（仅需这一次），之后各版本均可直接覆盖升级
 
             > 说明：安装包为 GitHub Actions 云端构建的 release 包（debug 签名），仅供侧载安装；手机端请使用原有正式 Release 中的安装包。
           files: dist/*.apk
