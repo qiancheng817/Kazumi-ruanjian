@@ -108,6 +108,16 @@ jobs:
           path: dist/*.apk
           retention-days: 30
 
+      - name: Reset previous universal release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=android-tv-universal-v${{ steps.version.outputs.version }}
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release delete "$TAG" --yes --cleanup-tag=false
+          fi
+        shell: bash
+
       - name: Publish Android TV universal release
         uses: softprops/action-gh-release@v2
         with:
@@ -118,6 +128,8 @@ jobs:
           make_latest: false
           body: |
             ## Kazumi Android TV 安装包（通用包 + 按架构分包）
+
+            > 本版启用 Impeller 渲染后端，修复部分 32 位电视（如海信 Android 8）使用 Skia 后端打开白屏的问题。
 
             适用于 Android TV / 电视盒子，与手机端安装包及旧版电视包相互独立，原有安装包未做改动。
 
