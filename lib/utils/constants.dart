@@ -209,7 +209,8 @@ final List<String> defaultAnimeTags = const [
 
 // 播放器默认快捷键
 final Map<String, List<String>> defaultShortcuts = const {
-  'playorpause': [' '],
+  // Select / Enter 对应 Android TV 遥控器的确认键，Media Play/Pause 为媒体键
+  'playorpause': [' ', 'Select', 'Enter', 'Media Play/Pause'],
   'forward': ['Arrow Right'],
   'rewind': ['Arrow Left'],
   'next': ['N'],

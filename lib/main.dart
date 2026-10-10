@@ -36,6 +36,14 @@ void main() async {
   }
 
   if (Platform.isAndroid) {
+    await detectAndroidTV();
+    if (isAndroidTV) {
+      // Android TV 固定为横屏，适配电视 16:9 观看比例
+      await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    }
     await WebViewFeatureService.initialize();
   }
 

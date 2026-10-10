@@ -1,0 +1,103 @@
+name: "build-android-tv"
+
+# Android TV 专用安装包构建（云端 GitHub Actions 执行）
+# 产物为包含 armeabi-v7a / arm64-v8a / x86_64 的通用 APK，
+# 兼容 Android 6.0 (API 23) 及以上，发布到独立的 android-tv-v* Release，
+# 不影响仓库已有的手机端 Release 与安装包。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android-tv:
+    name: "Build Android TV APK"
+    runs-on: "ubuntu-latest"
+    timeout-minutes: 60
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2.16.0
+        id: flutter-action
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+
+      - name: Install native build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build
+
+      - name: Get Flutter dependencies
+        run: flutter pub get
+
+      - name: Remove build id
+        run: sed -i -e 's/-Wl,/-Wl,--build-id=none,/' ${{ steps.flutter-action.outputs.PUB-CACHE-PATH }}/hosted/pub.dev/jni-*/src/CMakeLists.txt
+        shell: bash
+
+      - name: Extract app version
+        id: version
+        run: echo "version=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - name: Build Android TV APK
+        env:
+          DANDANAPI_APPID: ${{ secrets.DANDANAPI_APPID }}
+          DANDANAPI_KEY: ${{ secrets.DANDANAPI_KEY }}
+          KAZUMI_APPID: ${{ secrets.KAZUMI_APPID }}
+          KAZUMI_KEY: ${{ secrets.KAZUMI_KEY }}
+        run: >-
+          flutter build apk --release
+          --dart-define=DANDANAPI_APPID="$DANDANAPI_APPID"
+          --dart-define=DANDANAPI_KEY="$DANDANAPI_KEY"
+          --dart-define=KAZUMI_APPID="$KAZUMI_APPID"
+          --dart-define=KAZUMI_KEY="$KAZUMI_KEY"
+        shell: bash
+
+      - name: Rename APK
+        run: cp build/app/outputs/flutter-apk/app-release.apk Kazumi_android_tv_${{ steps.version.outputs.version }}.apk
+        shell: bash
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kazumi_android_tv_${{ steps.version.outputs.version }}
+          path: Kazumi_android_tv_*.apk
+          retention-days: 30
+
+      - name: Publish Android TV release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-tv-v${{ steps.version.outputs.version }}
+          name: "Kazumi Android TV 版 v${{ steps.version.outputs.version }}"
+          prerelease: false
+          # 不抢占手机端正式 Release 的 latest 标记
+          make_latest: false
+          body: |
+            ## Kazumi Android TV 专用安装包
+
+            仅适用于 Android TV / 电视盒子，与手机端安装包相互独立。
+
+            ### 适配内容
+            - 支持 Android TV 桌面（Leanback Launcher）显示与启动
+            - 完整遥控器操控：方向键焦点导航、确认键选择、返回键退出
+            - 播放页：左右快退/快进、上下音量、确认键播放/暂停并唤起控制条
+            - 电视端自动锁定横屏，使用 16:9 侧边导航布局
+            - minSdk 23，兼容 Android 6.0 及以上系统
+            - 通用 APK（armeabi-v7a / arm64-v8a / x86_64），新旧电视盒子均可安装
+
+            ### 安装方法
+            1. 下载 `Kazumi_android_tv_${{ steps.version.outputs.version }}.apk` 到 U 盘或通过电视文件管理应用传输
+            2. 在电视/盒子上允许「安装未知来源应用」后安装
+
+            > 说明：该安装包为 GitHub Actions 云端构建的 release 包（debug 签名），仅供侧载安装；手机端请使用原有正式 Release 中的安装包。
+          files: Kazumi_android_tv_*.apk

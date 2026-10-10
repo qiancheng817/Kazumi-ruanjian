@@ -355,7 +355,15 @@ class _PlayerItemState extends State<PlayerItem>
 
   void _initKeyboardActions() {
     keyboardActions = {
-      'playorpause': () => playerController.playOrPause(),
+      'playorpause': () {
+        // Android TV：控制面板隐藏时，遥控器确认键先唤起控制条；
+        // 控制条显示后由焦点按钮（播放/暂停、选集等）响应确认键
+        if (isAndroidTV && !playerController.panel.showVideoController) {
+          showVideoController();
+          return;
+        }
+        playerController.playOrPause();
+      },
       'forward': handleShortcutForwardDown,
       'rewind': handleShortcutRewind,
       'next': () => handlePreNextEpisode('next'),
@@ -986,6 +994,11 @@ class _PlayerItemState extends State<PlayerItem>
     _panelVisibilityController.reverse();
     _cancelHideTimer();
     playerController.panel.showVideoController = false;
+    // Android TV：控制条隐藏后把焦点还给播放器快捷键作用域，
+    // 方向键重新对应快进/快退/音量
+    if (isAndroidTV) {
+      widget.keyboardFocus.requestFocus();
+    }
   }
 
   PlayerPanelHold acquirePlayerPanelHold() {
@@ -1425,7 +1438,11 @@ class _PlayerItemState extends State<PlayerItem>
                       focusScopeNode: widget.keyboardFocus,
                       actions: keyboardActions,
                       longPressActions: keyboardLongPressActions,
-                      isBlocked: () => _openPlayerMenuCount > 0,
+                      // Android TV：控制条显示时方向键用于在控制按钮间移动焦点
+                      isBlocked: () =>
+                          _openPlayerMenuCount > 0 ||
+                          (isAndroidTV &&
+                              playerController.panel.showVideoController),
                     ),
                     Center(
                       key: _videoSurfaceKey,

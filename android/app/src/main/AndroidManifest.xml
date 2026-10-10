@@ -1,9 +1,18 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Android TV: 声明 Leanback 支持，同时不强制要求（手机端仍可安装） -->
+    <uses-feature
+        android:name="android.software.leanback"
+        android:required="false" />
+    <!-- Android TV 没有触摸屏，声明为非必需才能在电视商店/安装器中可见 -->
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false" />
     <application
         android:label="Kazumi"
         android:name="${applicationName}"
         android:usesCleartextTraffic="true"
         android:icon="@mipmap/ic_launcher"
+        android:banner="@drawable/tv_banner"
         android:extractNativeLibs="true">
         <meta-data
              android:name="io.flutter.embedding.android.EnableImpeller"
@@ -30,6 +39,8 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+                <!-- Android TV 桌面启动入口 -->
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.

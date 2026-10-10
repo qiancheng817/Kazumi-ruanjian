@@ -1,6 +1,7 @@
 package com.example.kazumi
 
 import android.app.PendingIntent
+import android.app.UiModeManager
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.BroadcastReceiver
@@ -115,6 +116,8 @@ class MainActivity: AudioServiceActivity() {
             } else if (call.method == "getAndroidSdkVersion") {
                 val sdkVersion = getAndroidSdkVersion()
                 result.success(sdkVersion)
+            } else if (call.method == "isAndroidTV") {
+                result.success(isAndroidTV())
             } else if (call.method == "setSystemBarsHidden") {
                 systemBarsHidden = call.arguments as? Boolean ?: false
                 applySystemBarsState()
@@ -178,6 +181,19 @@ class MainActivity: AudioServiceActivity() {
 
     private fun getAndroidSdkVersion(): Int {
         return Build.VERSION.SDK_INT
+    }
+
+    // 通过 UI 模式或 Leanback 特性判断是否运行在 Android TV 上
+    private fun isAndroidTV(): Boolean {
+        return try {
+            val uiModeManager = getSystemService(UI_MODE_SERVICE) as? UiModeManager
+            val isTelevision =
+                uiModeManager?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+            isTelevision ||
+                packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+        } catch (e: Exception) {
+            false
+        }
     }
 
     // System bars belong to the full size window; replayed on leaving PiP.
